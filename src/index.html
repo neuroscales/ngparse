@@ -105,7 +105,7 @@ async function main(){
     let pyodide = await loadPyodide();
     await pyodide.loadPackage("micropip");
     const micropip = pyodide.pyimport("micropip");
-    await micropip.install("ngtools-pyodide==0.0.0b6");
+    await micropip.install("ngtools-pyodide==0.0.0b7");
     await micropip.install("typing-extensions")
     await micropip.install("httpfs-sync");
     await micropip.install("yarl");

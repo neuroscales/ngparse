@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>ngparse - neuroglancer scene builder</title>
+
+    <!-- Recommended meta tags -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+    <!-- This script tag bootstraps Pyodide -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.28.1/full/pyodide.js"></script>
+</head>
+<body>
+    
+<button onclick="parseURL()">Parse</button>
+<div id="output"></div>
+    
+<script type="text/javascript">
+const code = `
+# ========================================
+
+def main():
+    import js
+    
+    # ========================================
+    import json
+    from urllib.parse import quote, unquote
+    from ngtools.scene import Scene
+    
+    
+    # ----------------------------------------
+    # Use synchronous HTTP filesystem + fix it
+    import fsspec
+    from httpfs_sync.core import SyncHTTPFileSystem
+    SyncHTTPFileSystem.overwrite_async_registration()
+    
+    _info_orig = SyncHTTPFileSystem.info
+    
+    def _info(self, *args, **kwargs):
+        kwargs.pop('compression', None)
+        return _info_orig(self, *args, **kwargs)
+    
+    SyncHTTPFileSystem.info = _info
+    
+    _open_orig = SyncHTTPFileSystem.open
+    
+    def _open(self, *args, **kwargs):
+        kwargs.pop('compression', None)
+        return _open_orig(self, *args, **kwargs)
+        
+    SyncHTTPFileSystem.open = _open
+    # ----------------------------------------
+    
+    def url2scene(url):
+        state = None
+        if '#!' in url:
+            try:
+                state = url.split('#!')[1]
+                if state[:1] == '+':
+                    state = state[1:]
+                state = unquote(state)
+                state = json.loads(state)
+            except Exception as e:
+                print("Failed to parse state:", e)
+        else:
+            print("No state provided")
+            return ""
+        
+        if state:
+            scene = Scene()
+            for cmd, args, *kwargs in state:
+                kwargs = kwargs[0] if kwargs else {}
+                getattr(scene, cmd)(*args, **kwargs)
+            
+            ngstate = scene.state()
+            ngurl = "https://neuroglancer-demo.appspot.com/index.html#!"
+            ngurl += quote(json.dumps(ngstate))
+        
+            # div = js.document.createElement("div")
+            # div.innerHTML = ngurl
+            # js.document.body.append(div)
+            # js.window.location.href = ngurl
+    
+            # ngstate_as_json = json.dumps(ngstate, indent=4)
+            # print(ngstate_as_json)
+            # return ngstate_as_json
+            
+            return ngurl
+
+    return url2scene(js.window.location.href)
+
+main()
+`
+
+const output = document.getElementById("output");
+function setOutput(s) {
+    const link = document.createElement("a");
+    link.href = s;
+    link.appendChild(document.createTextNode("Neuroglancer link"));
+    output.appendChild(link);
+}
+function setError(s) { output.innerHTML = s; }
+    
+async function main(){
+    let pyodide = await loadPyodide();
+    await pyodide.loadPackage("micropip");
+    const micropip = pyodide.pyimport("micropip");
+    await micropip.install("ngtools-pyodide==0.0.0b6");
+    await micropip.install("typing-extensions")
+    await micropip.install("httpfs-sync");
+    await micropip.install("yarl");
+    await micropip.install("nitransforms");
+    // await micropip.install("h5py");
+    return pyodide;
+}
+let pyodideReadyPromise = main();
+
+async function parseURL() {
+    let pyodide = await pyodideReadyPromise;
+    try {
+      let output = pyodide.runPython(code);
+      setOutput(output);
+    } catch (err) {
+      setError(err);
+    }
+}
+</script>
+    
+</body>
+</html>
